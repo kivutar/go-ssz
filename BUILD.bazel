@@ -84,6 +84,7 @@ go_test(
         "round_trip_test.go",
         "signing_root_test.go",
         "struct_utils_test.go",
+        "var_test.go",
     ],
     embed = [":go_default_library"],
 )

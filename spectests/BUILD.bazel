@@ -23,6 +23,7 @@ go_test(
         "@eth2_spec_tests//:test_data",
         "yaml/ssz_single_block.yaml",
         "yaml/ssz_single_state.yaml",
+        "yaml/ssz_committee.yaml",
     ],
     embed = [":go_default_library"],
     tags = ["spectest"],
