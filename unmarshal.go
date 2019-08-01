@@ -83,7 +83,7 @@ func makeUnmarshaler(typ reflect.Type) (dec unmarshaler, err error) {
 }
 
 func unmarshalBool(input []byte, val reflect.Value, startOffset uint64) (uint64, error) {
-	v := uint8(input[startOffset])
+	v := input[startOffset]
 	if v == 0 {
 		val.SetBool(false)
 	} else if v == 1 {
