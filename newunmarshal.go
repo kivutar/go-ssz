@@ -1,6 +1,7 @@
 package ssz
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"reflect"
@@ -56,18 +57,18 @@ func newMakeUnmarshaler(input []byte, val reflect.Value, typ reflect.Type, start
 		return newByteSliceUnmarshaler(input, val, typ, startOffset)
 	case kind == reflect.Array && typ.Elem().Kind() == reflect.Uint8:
 		return newBasicArrayUnmarshaler(input, val, typ, startOffset)
-	//case kind == reflect.Slice && isBasicTypeArray(typ.Elem(), typ.Elem().Kind()):
-	//	return makeBasicSliceUnmarshaler(typ)
-	//case kind == reflect.Slice && isBasicType(typ.Elem().Kind()):
-	//	return makeBasicSliceUnmarshaler(typ)
-	//case kind == reflect.Slice && !isVariableSizeType(typ.Elem()):
-	//	return makeBasicSliceUnmarshaler(typ)
-	//case kind == reflect.Array && !isVariableSizeType(typ.Elem()):
-	//	return makeBasicArrayUnmarshaler(typ)
-	//case kind == reflect.Slice:
-	//	return makeCompositeSliceUnmarshaler(typ)
-	//case kind == reflect.Array:
-	//	return makeCompositeArrayUnmarshaler(typ)
+	case kind == reflect.Slice && isBasicTypeArray(typ.Elem(), typ.Elem().Kind()):
+		return newBasicSliceUmmarshaler(input, val, typ, startOffset)
+	case kind == reflect.Slice && isBasicType(typ.Elem().Kind()):
+		return newBasicSliceUmmarshaler(input, val, typ, startOffset)
+	case kind == reflect.Slice && !isVariableSizeType(typ.Elem()):
+		return newBasicSliceUmmarshaler(input, val, typ, startOffset)
+	case kind == reflect.Array && !isVariableSizeType(typ.Elem()):
+		return newBasicArrayUnmarshaler(input, val, typ, startOffset)
+	case kind == reflect.Slice:
+		return newCompositeSliceUnmarshaler(input, val, typ, startOffset)
+	case kind == reflect.Array:
+		return newCompositeArrayUnmarshaler(input, val, typ, startOffset)
 	//case kind == reflect.Struct:
 	//	return makeStructUnmarshaler(typ)
 	//case kind == reflect.Ptr:
@@ -81,24 +82,6 @@ func newByteSliceUnmarshaler(input []byte, val reflect.Value, typ reflect.Type, 
 	offset := startOffset + uint64(len(input))
 	val.SetBytes(input[startOffset:offset])
 	return offset, nil
-}
-
-func newBasicArrayUnmarshaler(input []byte, val reflect.Value, typ reflect.Type, startOffset uint64) (uint64, error) {
-	i := 0
-	index := startOffset
-	size := val.Len()
-	var err error
-	for i < size {
-		if val.Index(i).Kind() == reflect.Ptr {
-			instantiateConcreteTypeForElement(val.Index(i), typ.Elem().Elem())
-		}
-		index, err = newMakeUnmarshaler(input, val.Index(i), val.Index(i).Type(), index)
-		if err != nil {
-			return 0, fmt.Errorf("failed to unmarshal element of array: %v", err)
-		}
-		i++
-	}
-	return index, nil
 }
 
 func newBasicSliceUmmarshaler(input []byte, val reflect.Value, typ reflect.Type, startOffset uint64) (uint64, error) {
@@ -132,7 +115,6 @@ func newBasicSliceUmmarshaler(input []byte, val reflect.Value, typ reflect.Type,
 
 	var err error
 	index := startOffset
-	// TODO: USE Typ.
 	index, err = newMakeUnmarshaler(input, val.Index(0), val.Index(0).Type(), index)
 	if err != nil {
 		return 0, fmt.Errorf("failed to unmarshal element of slice: %v", err)
@@ -164,11 +146,95 @@ func newBasicSliceUmmarshaler(input []byte, val reflect.Value, typ reflect.Type,
 		if val.Type() == typ {
 			growConcreteSliceType(val, val.Type(), int(i)+1)
 		}
-		index, err = newMakeUnmarshaler(input, val.Index(int(i)), val.Index(int(i)).Type(), index)
+		index, err = newMakeUnmarshaler(input, val.Index(int(i)), typ.Elem(), index)
 		if err != nil {
 			return 0, fmt.Errorf("failed to unmarshal element of slice: %v", err)
 		}
 		i++
 	}
 	return index, nil
+}
+
+func newCompositeSliceUnmarshaler(input []byte, val reflect.Value, typ reflect.Type, startOffset uint64) (uint64, error) {
+	if len(input) == 0 {
+		newVal := reflect.MakeSlice(val.Type(), 0, 0)
+		val.Set(newVal)
+		return 0, nil
+	}
+	growConcreteSliceType(val, typ, 1)
+	endOffset := uint64(len(input))
+
+	currentIndex := startOffset
+	nextIndex := currentIndex
+	offsetVal := input[startOffset : startOffset+BytesPerLengthOffset]
+	firstOffset := startOffset + uint64(binary.LittleEndian.Uint32(offsetVal))
+	currentOffset := firstOffset
+	nextOffset := currentOffset
+	i := 0
+	for currentIndex < firstOffset {
+		nextIndex = currentIndex + BytesPerLengthOffset
+		if nextIndex == firstOffset {
+			nextOffset = endOffset
+		} else {
+			nextOffsetVal := input[nextIndex : nextIndex+BytesPerLengthOffset]
+			nextOffset = startOffset + uint64(binary.LittleEndian.Uint32(nextOffsetVal))
+		}
+		// We grow the slice's size to accommodate a new element being unmarshaled.
+		growConcreteSliceType(val, typ, i+1)
+		if _, err := newMakeUnmarshaler(input[currentOffset:nextOffset], val.Index(i), typ.Elem(), 0); err != nil {
+			return 0, fmt.Errorf("failed to unmarshal element of slice: %v", err)
+		}
+		i++
+		currentIndex = nextIndex
+		currentOffset = nextOffset
+	}
+	return currentIndex, nil
+}
+
+func newBasicArrayUnmarshaler(input []byte, val reflect.Value, typ reflect.Type, startOffset uint64) (uint64, error) {
+	i := 0
+	index := startOffset
+	size := val.Len()
+	var err error
+	for i < size {
+		if val.Index(i).Kind() == reflect.Ptr {
+			instantiateConcreteTypeForElement(val.Index(i), typ.Elem().Elem())
+		}
+		index, err = newMakeUnmarshaler(input, val.Index(i), typ.Elem(), index)
+		if err != nil {
+			return 0, fmt.Errorf("failed to unmarshal element of array: %v", err)
+		}
+		i++
+	}
+	return index, nil
+}
+
+func newCompositeArrayUnmarshaler(input []byte, val reflect.Value, typ reflect.Type, startOffset uint64) (uint64, error) {
+	currentIndex := startOffset
+	nextIndex := currentIndex
+	offsetVal := input[startOffset : startOffset+BytesPerLengthOffset]
+	firstOffset := startOffset + uint64(binary.LittleEndian.Uint32(offsetVal))
+	currentOffset := firstOffset
+	nextOffset := currentOffset
+	endOffset := uint64(len(input))
+	i := 0
+	for currentIndex < firstOffset {
+		nextIndex = currentIndex + BytesPerLengthOffset
+		if nextIndex == firstOffset {
+			nextOffset = endOffset
+		} else {
+			nextOffsetVal := input[nextIndex : nextIndex+BytesPerLengthOffset]
+			nextOffset = startOffset + uint64(binary.LittleEndian.Uint32(nextOffsetVal))
+		}
+		if val.Index(i).Kind() == reflect.Ptr {
+			instantiateConcreteTypeForElement(val.Index(i), typ.Elem().Elem())
+		}
+		if _, err := newMakeUnmarshaler(input[currentOffset:nextOffset], val.Index(i), typ.Elem(), 0); err != nil {
+			return 0, fmt.Errorf("failed to unmarshal element of slice: %v", err)
+		}
+		i++
+		currentIndex = nextIndex
+		currentOffset = nextOffset
+	}
+	return currentIndex, nil
 }
