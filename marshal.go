@@ -221,7 +221,8 @@ func newmakeStructMarshaler(val reflect.Value, typ reflect.Type, buf []byte, sta
 	nextOffsetIndex := currentOffsetIndex
 	for _, f := range fields {
 		if !isVariableSizeType(f.typ) {
-			fmt.Printf("%s FIXED and index %d\n", f.name, currentOffsetIndex)
+			tString := f.typ.String()
+			fmt.Printf("%s FIXED and index %d and t %s\n", f.name, currentOffsetIndex, tString)
 			fixedIndex, err = newMakeMarshaler(val.Field(f.index), f.typ, buf, fixedIndex)
 			if err != nil {
 				return 0, err
