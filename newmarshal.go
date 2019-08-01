@@ -43,7 +43,7 @@ import (
 //
 // This will treat `Field2` as type [][32]byte when marshaling a
 // struct of that type.
-func NewMarshal(val interface{}) ([]byte, error) {
+func Marshal(val interface{}) ([]byte, error) {
 	if val == nil {
 		return nil, errors.New("untyped-value nil cannot be marshaled")
 	}

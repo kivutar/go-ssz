@@ -102,40 +102,6 @@ func (b *hashCacheS) newLookup(
 	return res, nil
 }
 
-func (b *hashCacheS) lookup(
-	rval reflect.Value,
-	hasher hasher,
-	marshaler marshaler,
-	maxCapacity uint64,
-) ([32]byte, error) {
-	cacheKey, err := generateCacheKey(rval, marshaler, maxCapacity)
-	if err != nil {
-		return [32]byte{}, err
-	}
-	// We take the hash of the generated cache key.
-	h, _ := highwayhash.New(make([]byte, 32))
-	if _, err := io.Copy(h, bytes.NewBuffer(cacheKey)); err != nil {
-		return [32]byte{}, err
-	}
-	hs := h.Sum(nil)
-	exists, fetchedInfo, err := b.RootByEncodedHash(hs)
-	if err != nil {
-		return [32]byte{}, err
-	}
-	if exists {
-		return toBytes32(fetchedInfo.MerkleRoot), nil
-	}
-	res, err := hasher(rval, maxCapacity)
-	if err != nil {
-		return [32]byte{}, err
-	}
-	err = b.AddRoot(hs, res[:])
-	if err != nil {
-		return [32]byte{}, err
-	}
-	return res, nil
-}
-
 // AddRoot adds an encodedhash of the object as key and a rootHash object to the cache.
 // This method also trims the
 // least recently added root info if the cache size has reached the max cache
@@ -165,32 +131,6 @@ func newGenerateCacheKey(v reflect.Value, typ reflect.Type, maxCapacity uint64) 
 		if v.Kind() != reflect.Struct || (v.Kind() == reflect.Ptr && !v.IsNil()) {
 			buf = make([]byte, determineSize(v))
 			if _, err := newMakeMarshaler(v, typ, buf, 0); err != nil {
-				return nil, err
-			}
-			binary.LittleEndian.PutUint64(encodedLength, uint64(len(buf)))
-		}
-		buf = append(buf, []byte(v.Type().String())...)
-	}
-	lengthMetadata := append(encodedCapacity, encodedLength...)
-	buf = append(buf, lengthMetadata...)
-	return buf, nil
-}
-
-func generateCacheKey(v reflect.Value, marshaler marshaler, maxCapacity uint64) ([]byte, error) {
-	encodedLength := make([]byte, 8)
-	encodedCapacity := make([]byte, 8)
-	binary.LittleEndian.PutUint64(encodedCapacity, maxCapacity)
-	var buf []byte
-	var err error
-	if v.Kind() == reflect.Struct {
-		buf, err = generateStructHashKey(v)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		if v.Kind() != reflect.Struct || (v.Kind() == reflect.Ptr && !v.IsNil()) {
-			buf = make([]byte, determineSize(v))
-			if _, err := marshaler(v, buf, 0); err != nil {
 				return nil, err
 			}
 			binary.LittleEndian.PutUint64(encodedLength, uint64(len(buf)))

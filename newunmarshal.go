@@ -7,7 +7,7 @@ import (
 	"reflect"
 )
 
-// NewUnmarshal SSZ encoded data and output it into the object pointed by pointer val.
+// Unmarshal SSZ encoded data and output it into the object pointed by pointer val.
 // Given a struct with the following fields, and some encoded bytes of type []byte,
 // one can then unmarshal the bytes into a pointer of the struct as follows:
 //  type exampleStruct1 struct {
@@ -19,7 +19,7 @@ import (
 //  if err := Unmarshal(encodedBytes, &targetStruct); err != nil {
 //      return fmt.Errorf("failed to unmarshal: %v", err)
 //  }
-func NewUnmarshal(input []byte, val interface{}) error {
+func Unmarshal(input []byte, val interface{}) error {
 	if val == nil {
 		return errors.New("cannot unmarshal into untyped, nil value")
 	}

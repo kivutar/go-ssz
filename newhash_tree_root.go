@@ -10,7 +10,17 @@ import (
 	"github.com/prysmaticlabs/go-bitfield"
 )
 
-// NewHashTreeRoot determines the root hash using SSZ's merkleization.
+var (
+	useCache  = true
+	hashCache = newHashCache(100000)
+)
+
+// ToggleCache allows to programmatically enable/disable the hash tree root cache.
+func ToggleCache(enableTreeCache bool) {
+	useCache = enableTreeCache
+}
+
+// HashTreeRoot determines the root hash using SSZ's merkleization.
 // Given a struct with the following fields, one can tree hash it as follows:
 //  type exampleStruct struct {
 //      Field1 uint8
@@ -25,12 +35,36 @@ import (
 //  if err != nil {
 //      return fmt.Errorf("failed to compute root: %v", err)
 //  }
-func NewHashTreeRoot(val interface{}) ([32]byte, error) {
+func HashTreeRoot(val interface{}) ([32]byte, error) {
 	if val == nil {
 		return [32]byte{}, errors.New("untyped nil is not supported")
 	}
 	rval := reflect.ValueOf(val)
 	output, err := newMakeHasher(rval, rval.Type(), 0)
+	if err != nil {
+		return [32]byte{}, fmt.Errorf("could not tree hash type: %v: %v", rval.Type(), err)
+	}
+	return output, nil
+}
+
+// HashTreeRootWithCapacity determines the root hash of a dynamic list
+// using SSZ's merkleization and applies a max capacity value when computing the root.
+// If the input is not a slice, the function returns an error.
+//
+//  accountBalances := []uint64{1, 2, 3, 4}
+//  root, err := HashTreeRootWithCapacity(accountBalances, 100) // Max 100 accounts.
+//  if err != nil {
+//      return fmt.Errorf("failed to compute root: %v", err)
+//  }
+func HashTreeRootWithCapacity(val interface{}, maxCapacity uint64) ([32]byte, error) {
+	if val == nil {
+		return [32]byte{}, errors.New("untyped nil is not supported")
+	}
+	rval := reflect.ValueOf(val)
+	if rval.Kind() != reflect.Slice {
+		return [32]byte{}, fmt.Errorf("expected slice-kind input, received %v", rval.Kind())
+	}
+	output, err := newMakeHasher(rval, rval.Type(), maxCapacity)
 	if err != nil {
 		return [32]byte{}, fmt.Errorf("could not tree hash type: %v: %v", rval.Type(), err)
 	}
@@ -71,6 +105,32 @@ func newMakeBasicTypeHasher(val reflect.Value, typ reflect.Type, maxCapacity uin
 		return [32]byte{}, err
 	}
 	return bitwiseMerkleize(chunks, 1, false /* has limit */)
+}
+
+func bitlistHasher(val reflect.Value, maxCapacity uint64) ([32]byte, error) {
+	limit := (maxCapacity + 255) / 256
+	if val.IsNil() {
+		length := make([]byte, 32)
+		merkleRoot, err := bitwiseMerkleize([][]byte{}, limit, true /* has limit */)
+		if err != nil {
+			return [32]byte{}, err
+		}
+		return mixInLength(merkleRoot, length), nil
+	}
+	bfield := val.Interface().(bitfield.Bitlist)
+	chunks, err := pack([][]byte{bfield.Bytes()})
+	if err != nil {
+		return [32]byte{}, err
+	}
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.LittleEndian, bfield.Len())
+	output := make([]byte, 32)
+	copy(output, buf.Bytes())
+	merkleRoot, err := bitwiseMerkleize(chunks, limit, true /* has limit */)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return mixInLength(merkleRoot, output), nil
 }
 
 func newBasicArrayHasher(val reflect.Value, typ reflect.Type, maxCapacity uint64) ([32]byte, error) {
@@ -216,6 +276,10 @@ func newMakeStructHasher(val reflect.Value, typ reflect.Type, maxCapacity uint64
 	if err != nil {
 		return [32]byte{}, err
 	}
+	return makeFieldsHasher(val, fields)
+}
+
+func makeFieldsHasher(val reflect.Value, fields []field) ([32]byte, error) {
 	roots := [][]byte{}
 	for _, f := range fields {
 		var r [32]byte
