@@ -76,10 +76,13 @@ func newMakeBasicTypeHasher(val reflect.Value, maxCapacity uint64) ([32]byte, er
 
 func newBasicArrayHasher(val reflect.Value, maxCapacity uint64) ([32]byte, error) {
 	var leaves [][]byte
+	var err error
 	for i := 0; i < val.Len(); i++ {
-		r, err := newMakeHasher(val.Index(i), 0)
-		if err != nil {
-			return [32]byte{}, err
+		var r [32]byte
+		if useCache {
+			r, err = hashCache.lookup(val.Index(i), newMakeHasher, newMakeMarshaler, 0)
+		} else {
+			r, err = newMakeHasher(val.Index(i), 0)
 		}
 		leaves = append(leaves, r[:])
 	}
