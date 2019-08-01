@@ -38,28 +38,28 @@ func NewHashTreeRoot(val interface{}) ([32]byte, error) {
 }
 
 func newMakeHasher(val reflect.Value, maxCapacity uint64) ([32]byte, error) {
+	typ := val.Type()
 	kind := typ.Kind()
 	switch {
 	case isBasicType(kind) || isBasicTypeArray(typ, kind):
-		return makeBasicTypeHasher(typ)
+		return newMakeBasicTypeHasher(val, maxCapacity)
 	case kind == reflect.Slice && isBasicType(typ.Elem().Kind()):
-		return makeBasicSliceHasher(typ)
+		return newBasicSliceHasher(val, maxCapacity)
 	case kind == reflect.Slice && isBasicTypeArray(typ.Elem(), typ.Elem().Kind()):
-		return makeBasicSliceHasher(typ)
+		return newBasicSliceHasher(val, maxCapacity)
 	case kind == reflect.Array && isBasicTypeArray(typ.Elem(), typ.Elem().Kind()):
-		return makeBasicArrayHasher(typ)
+		return newBasicArrayHasher(val, maxCapacity)
 	case kind == reflect.Slice && !isBasicType(typ.Elem().Kind()):
-		return makeCompositeSliceHasher(typ)
+		return newCompositeSliceHasher(val, maxCapacity)
 	case kind == reflect.Array:
-		return makeCompositeArrayHasher(typ)
+		return newCompositeArrayHasher(val, maxCapacity)
 	case kind == reflect.Struct:
-		return makeStructHasher(typ)
+		return newMakeStructHasher(val, maxCapacity)
 	case kind == reflect.Ptr:
-		return makePtrHasher(typ)
+		return newMakePtrHasher(val, maxCapacity)
 	default:
-		return nil, fmt.Errorf("type %v is not hashable", typ)
+		return [32]byte{}, fmt.Errorf("type %v is not hashable", typ)
 	}
-	return [32]byte{}, nil
 }
 
 func newMakeBasicTypeHasher(val reflect.Value, maxCapacity uint64) ([32]byte, error) {
@@ -102,10 +102,13 @@ func newCompositeArrayHasher(val reflect.Value, maxCapacity uint64) ([32]byte, e
 		elemSize = 32
 	}
 	limit := (uint64(val.Len())*elemSize + 31) / 32
+	var err error
 	for i := 0; i < val.Len(); i++ {
-		r, err := newMakeHasher(val.Index(i), 0)
-		if err != nil {
-			return [32]byte{}, err
+		var r [32]byte
+		if useCache {
+			r, err = hashCache.lookup(val.Index(i), newMakeHasher, newMakeMarshaler, 0)
+		} else {
+			r, err = newMakeHasher(val.Index(i), 0)
 		}
 		roots = append(roots, r[:])
 	}
