@@ -154,7 +154,7 @@ func newBasicSliceUmmarshaler(input []byte, val reflect.Value, typ reflect.Type,
 
 	var err error
 	index := startOffset
-	index, err = newMakeUnmarshaler(input, val.Index(0), val.Index(0).Type(), index)
+	index, err = newMakeUnmarshaler(input, val.Index(0), typ.Elem(), index)
 	if err != nil {
 		return 0, fmt.Errorf("failed to unmarshal element of slice: %v", err)
 	}

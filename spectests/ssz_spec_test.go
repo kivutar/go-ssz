@@ -43,25 +43,6 @@ func TestYamlStateRoundTrip(t *testing.T) {
 	}
 }
 
-func TestYamlCommittee(t *testing.T) {
-	s := &SszBenchmarkItem{}
-	populateStructFromYaml(t, "./yaml/ssz_committee.yaml", s)
-	encoded, err := ssz.Marshal(s.Value)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(encoded, s.Serialized) {
-		t.Fatal("Failed to encode")
-	}
-	var targetState MinimalCompactCommittee
-	if err := ssz.Unmarshal(encoded, &targetState); err != nil {
-		t.Fatal(err)
-	}
-	if !ssz.DeepEqual(targetState, s.Value) {
-		t.Errorf("Unmarshaled encoding %v did not match original value %v", targetState, s.Value)
-	}
-}
-
 func TestYamlBlockRoundTrip(t *testing.T) {
 	s := &SszBenchmarkBlock{}
 	populateStructFromYaml(t, "./yaml/ssz_single_block.yaml", s)

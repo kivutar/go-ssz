@@ -189,12 +189,6 @@ type SszBenchmarkState struct {
 	Root       []byte             `json:"root" ssz:"size=32"`
 }
 
-type SszBenchmarkItem struct {
-	Value      MinimalCompactCommittee `json:"value"`
-	Serialized []byte             `json:"serialized"`
-	Root       []byte             `json:"root" ssz:"size=32"`
-}
-
 type SszBenchmarkBlock struct {
 	Value       MinimalBlock `json:"value"`
 	Serialized  []byte       `json:"serialized"`
