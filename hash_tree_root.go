@@ -40,11 +40,17 @@ func HashTreeRoot(val interface{}) ([32]byte, error) {
 		return [32]byte{}, errors.New("untyped nil is not supported")
 	}
 	rval := reflect.ValueOf(val)
-	output, err := newMakeHasher(rval, rval.Type(), 0)
+	var r [32]byte
+	var err error
+	if useCache {
+		r, err = hashCache.newLookup(rval, rval.Type(), 0)
+	} else {
+		r, err = newMakeHasher(rval, rval.Type(), 0)
+	}
 	if err != nil {
 		return [32]byte{}, fmt.Errorf("could not tree hash type: %v: %v", rval.Type(), err)
 	}
-	return output, nil
+	return r, nil
 }
 
 // HashTreeRootWithCapacity determines the root hash of a dynamic list
@@ -64,11 +70,17 @@ func HashTreeRootWithCapacity(val interface{}, maxCapacity uint64) ([32]byte, er
 	if rval.Kind() != reflect.Slice {
 		return [32]byte{}, fmt.Errorf("expected slice-kind input, received %v", rval.Kind())
 	}
-	output, err := newMakeHasher(rval, rval.Type(), maxCapacity)
+	var r [32]byte
+	var err error
+	if useCache {
+		r, err = hashCache.newLookup(rval, rval.Type(), maxCapacity)
+	} else {
+		r, err = newMakeHasher(rval, rval.Type(), maxCapacity)
+	}
 	if err != nil {
 		return [32]byte{}, fmt.Errorf("could not tree hash type: %v: %v", rval.Type(), err)
 	}
-	return output, nil
+	return r, nil
 }
 
 func newMakeHasher(val reflect.Value, typ reflect.Type, maxCapacity uint64) ([32]byte, error) {
