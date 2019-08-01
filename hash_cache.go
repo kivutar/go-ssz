@@ -69,6 +69,39 @@ func (b *hashCacheS) RootByEncodedHash(h []byte) (bool, *root, error) {
 	return true, hInfo, nil
 }
 
+func (b *hashCacheS) newLookup(
+	rval reflect.Value,
+	typ reflect.Type,
+	maxCapacity uint64,
+) ([32]byte, error) {
+	cacheKey, err := newGenerateCacheKey(rval, typ, maxCapacity)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	// We take the hash of the generated cache key.
+	h, _ := highwayhash.New(make([]byte, 32))
+	if _, err := io.Copy(h, bytes.NewBuffer(cacheKey)); err != nil {
+		return [32]byte{}, err
+	}
+	hs := h.Sum(nil)
+	exists, fetchedInfo, err := b.RootByEncodedHash(hs)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	if exists {
+		return toBytes32(fetchedInfo.MerkleRoot), nil
+	}
+	res, err := newMakeHasher(rval, typ, maxCapacity)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	err = b.AddRoot(hs, res[:])
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return res, nil
+}
+
 func (b *hashCacheS) lookup(
 	rval reflect.Value,
 	hasher hasher,
@@ -115,6 +148,32 @@ func (b *hashCacheS) AddRoot(h []byte, rootB []byte) error {
 	b.hashCache.Set(string(h), mr, time.Hour)
 	hashCacheSize.Set(float64(b.hashCache.ItemCount()))
 	return nil
+}
+
+func newGenerateCacheKey(v reflect.Value, typ reflect.Type, maxCapacity uint64) ([]byte, error) {
+	encodedLength := make([]byte, 8)
+	encodedCapacity := make([]byte, 8)
+	binary.LittleEndian.PutUint64(encodedCapacity, maxCapacity)
+	var buf []byte
+	var err error
+	if v.Kind() == reflect.Struct {
+		buf, err = generateStructHashKey(v)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		if v.Kind() != reflect.Struct || (v.Kind() == reflect.Ptr && !v.IsNil()) {
+			buf = make([]byte, determineSize(v))
+			if _, err := newMakeMarshaler(v, typ, buf, 0); err != nil {
+				return nil, err
+			}
+			binary.LittleEndian.PutUint64(encodedLength, uint64(len(buf)))
+		}
+		buf = append(buf, []byte(v.Type().String())...)
+	}
+	lengthMetadata := append(encodedCapacity, encodedLength...)
+	buf = append(buf, lengthMetadata...)
+	return buf, nil
 }
 
 func generateCacheKey(v reflect.Value, marshaler marshaler, maxCapacity uint64) ([]byte, error) {

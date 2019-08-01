@@ -79,7 +79,7 @@ func newBasicArrayHasher(val reflect.Value, typ reflect.Type, maxCapacity uint64
 	for i := 0; i < val.Len(); i++ {
 		var r [32]byte
 		if useCache {
-			r, err = hashCache.lookup(val.Index(i), newMakeHasher, newMakeMarshaler, 0)
+			r, err = hashCache.newLookup(val.Index(i), typ.Elem(), 0)
 		} else {
 			r, err = newMakeHasher(val.Index(i), typ.Elem(), 0)
 		}
@@ -108,7 +108,7 @@ func newCompositeArrayHasher(val reflect.Value, typ reflect.Type, maxCapacity ui
 	for i := 0; i < val.Len(); i++ {
 		var r [32]byte
 		if useCache {
-			r, err = hashCache.lookup(val.Index(i), newMakeHasher, newMakeMarshaler, 0)
+			r, err = hashCache.newLookup(val.Index(i), typ.Elem(), 0)
 		} else {
 			r, err = newMakeHasher(val.Index(i), typ.Elem(), 0)
 		}
@@ -184,7 +184,7 @@ func newCompositeSliceHasher(val reflect.Value, typ reflect.Type, maxCapacity ui
 	for i := 0; i < val.Len(); i++ {
 		var r [32]byte
 		if useCache {
-			r, err = hashCache.lookup(val.Index(i), newMakeHasher, newMakeMarshaler, 0)
+			r, err = hashCache.newLookup(val.Index(i), typ.Elem(), 0)
 		} else {
 			r, err = newMakeHasher(val.Index(i), typ.Elem(), 0)
 		}
@@ -226,10 +226,9 @@ func newMakeStructHasher(val reflect.Value, typ reflect.Type, maxCapacity uint64
 			continue
 		}
 		if useCache {
-			r, err = hashCache.lookup(
+			r, err = hashCache.newLookup(
 				val.Field(f.index),
-				newMakeHasher,
-				newMakeMarshaler,
+				f.typ,
 				f.capacity,
 			)
 		} else {
