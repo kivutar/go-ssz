@@ -41,18 +41,16 @@ func NewUnmarshal(input []byte, val interface{}) error {
 func newMakeUnmarshaler(input []byte, val reflect.Value, typ reflect.Type, startOffset uint64) (uint64, error) {
 	kind := typ.Kind()
 	switch {
-	//case kind == reflect.Bool:
-	//	return unmarshalBool(input, val, typ, startOffset)
-	//case kind == reflect.Uint8:
-	//	return unmarshalUint8(input, val, typ, startOffset)
-	//case kind == reflect.Uint16:
-	//	return unmarshalUint16(input, val, typ, startOffset)
-	//case kind == reflect.Uint32:
-	//	return unmarshalUint32(input, val, typ, startOffset)
-	//case kind == reflect.Int32:
-	//	return unmarshalUint32(input, val, typ, startOffset)
-	//case kind == reflect.Uint64:
-	//	return unmarshalUint64(input, val, typ, startOffset)
+	case kind == reflect.Bool:
+		return newUnmarshalBool(input, val, typ, startOffset)
+	case kind == reflect.Uint8:
+		return newUnmarshalUint8(input, val, typ, startOffset)
+	case kind == reflect.Uint16:
+		return newUnmarshalUint16(input, val, typ, startOffset)
+	case kind == reflect.Uint32:
+		return newUnmarshalUint32(input, val, typ, startOffset)
+	case kind == reflect.Uint64:
+		return newUnmarshalUint64(input, val, typ, startOffset)
 	case kind == reflect.Slice && typ.Elem().Kind() == reflect.Uint8:
 		return newByteSliceUnmarshaler(input, val, typ, startOffset)
 	case kind == reflect.Array && typ.Elem().Kind() == reflect.Uint8:
@@ -69,13 +67,54 @@ func newMakeUnmarshaler(input []byte, val reflect.Value, typ reflect.Type, start
 		return newCompositeSliceUnmarshaler(input, val, typ, startOffset)
 	case kind == reflect.Array:
 		return newCompositeArrayUnmarshaler(input, val, typ, startOffset)
-	//case kind == reflect.Struct:
-	//	return makeStructUnmarshaler(typ)
-	//case kind == reflect.Ptr:
-	//	return makePtrUnmarshaler(typ)
+	case kind == reflect.Struct:
+		return newStructUnmarshaler(input, val, typ, startOffset)
+	case kind == reflect.Ptr:
+		return newPtrUnmarshaler(input, val, typ, startOffset)
 	default:
 		return 0, fmt.Errorf("type %v is not deserializable", typ)
 	}
+}
+
+func newUnmarshalBool(input []byte, val reflect.Value, typ reflect.Type, startOffset uint64) (uint64, error) {
+	v := input[startOffset]
+	if v == 0 {
+		val.SetBool(false)
+	} else if v == 1 {
+		val.SetBool(true)
+	} else {
+		return 0, fmt.Errorf("expected 0 or 1 but received %d", v)
+	}
+	return startOffset + 1, nil
+}
+
+func newUnmarshalUint8(input []byte, val reflect.Value, typ reflect.Type, startOffset uint64) (uint64, error) {
+	val.SetUint(uint64(input[startOffset]))
+	return startOffset + 1, nil
+}
+
+func newUnmarshalUint16(input []byte, val reflect.Value, typ reflect.Type, startOffset uint64) (uint64, error) {
+	offset := startOffset + 2
+	buf := make([]byte, 2)
+	copy(buf, input[startOffset:offset])
+	val.SetUint(uint64(binary.LittleEndian.Uint16(buf)))
+	return offset, nil
+}
+
+func newUnmarshalUint32(input []byte, val reflect.Value, typ reflect.Type, startOffset uint64) (uint64, error) {
+	offset := startOffset + 4
+	buf := make([]byte, 4)
+	copy(buf, input[startOffset:offset])
+	val.SetUint(uint64(binary.LittleEndian.Uint32(buf)))
+	return offset, nil
+}
+
+func newUnmarshalUint64(input []byte, val reflect.Value, typ reflect.Type, startOffset uint64) (uint64, error) {
+	offset := startOffset + 8
+	buf := make([]byte, 8)
+	copy(buf, input[startOffset:offset])
+	val.SetUint(binary.LittleEndian.Uint64(buf))
+	return offset, nil
 }
 
 func newByteSliceUnmarshaler(input []byte, val reflect.Value, typ reflect.Type, startOffset uint64) (uint64, error) {
@@ -237,4 +276,89 @@ func newCompositeArrayUnmarshaler(input []byte, val reflect.Value, typ reflect.T
 		currentOffset = nextOffset
 	}
 	return currentIndex, nil
+}
+
+func newStructUnmarshaler(input []byte, val reflect.Value, typ reflect.Type, startOffset uint64) (uint64, error) {
+	fields, err := structFields(typ)
+	if err != nil {
+		return 0, err
+	}
+	endOffset := uint64(len(input))
+	currentIndex := startOffset
+	nextIndex := currentIndex
+	fixedSizes := make([]uint64, len(fields))
+
+	for i := 0; i < len(fixedSizes); i++ {
+		if !isVariableSizeType(fields[i].typ) {
+			if val.Field(i).Kind() == reflect.Ptr {
+				instantiateConcreteTypeForElement(val.Field(i), fields[i].typ.Elem())
+			}
+			concreteVal := val.Field(i)
+			sszSizeTags, hasTags, err := parseSSZFieldTags(typ.Field(i))
+			if err != nil {
+				return 0, err
+			}
+			if hasTags {
+				concreteType := inferFieldTypeFromSizeTags(typ.Field(i), sszSizeTags)
+				concreteVal = reflect.New(concreteType).Elem()
+				// If the item is a slice, we grow it accordingly based on the size tags.
+				if val.Field(i).Kind() == reflect.Slice {
+					result := growSliceFromSizeTags(val.Field(i), sszSizeTags)
+					val.Field(i).Set(result)
+				}
+			}
+			fixedSz := determineFixedSize(concreteVal, fields[i].typ)
+			if fixedSz > 0 {
+				fixedSizes[i] = fixedSz
+			}
+		} else {
+			fixedSizes[i] = 0
+		}
+	}
+
+	offsets := make([]uint64, 0)
+	offsetIndexCounter := startOffset
+	for _, item := range fixedSizes {
+		if item > 0 {
+			offsetIndexCounter += item
+		} else {
+			offsetVal := input[offsetIndexCounter : offsetIndexCounter+BytesPerLengthOffset]
+			offsets = append(offsets, startOffset+uint64(binary.LittleEndian.Uint32(offsetVal)))
+			offsetIndexCounter += BytesPerLengthOffset
+		}
+	}
+	offsets = append(offsets, endOffset)
+	offsetIndex := uint64(0)
+	for i := 0; i < len(fields); i++ {
+		f := fields[i]
+		fieldSize := fixedSizes[i]
+		if val.Field(i).Kind() == reflect.Ptr {
+			instantiateConcreteTypeForElement(val.Field(i), fields[i].typ.Elem())
+		}
+		if fieldSize > 0 {
+			nextIndex = currentIndex + fieldSize
+			if _, err := newMakeUnmarshaler(input[currentIndex:nextIndex], val.Field(i), f.typ, 0); err != nil {
+				return 0, err
+			}
+			currentIndex = nextIndex
+
+		} else {
+			firstOff := offsets[offsetIndex]
+			nextOff := offsets[offsetIndex+1]
+			if _, err := newMakeUnmarshaler(input[firstOff:nextOff], val.Field(i), f.typ, 0); err != nil {
+				return 0, err
+			}
+			offsetIndex++
+			currentIndex += BytesPerLengthOffset
+		}
+	}
+	return currentIndex, nil
+}
+
+func newPtrUnmarshaler(input []byte, val reflect.Value, typ reflect.Type, startOffset uint64) (uint64, error) {
+	elemSize, err := newMakeUnmarshaler(input, val.Elem(), typ.Elem(), startOffset)
+	if err != nil {
+		return 0, fmt.Errorf("failed to unmarshal to object pointed by pointer: %v", err)
+	}
+	return elemSize, nil
 }
