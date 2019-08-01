@@ -16,10 +16,6 @@ func isBasicTypeArray(typ reflect.Type, kind reflect.Kind) bool {
 	return kind == reflect.Array && isBasicType(typ.Elem().Kind())
 }
 
-func isBasicTypeSlice(typ reflect.Type, kind reflect.Kind) bool {
-	return kind == reflect.Slice && isBasicType(typ.Elem().Kind())
-}
-
 func isVariableSizeType(typ reflect.Type) bool {
 	kind := typ.Kind()
 	switch {

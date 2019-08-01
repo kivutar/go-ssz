@@ -213,27 +213,31 @@ func newCompositeSliceHasher(val reflect.Value, maxCapacity uint64) ([32]byte, e
 }
 
 func newMakeStructHasher(val reflect.Value, maxCapacity uint64) ([32]byte, error) {
+	fields, err := structFields(val.Type())
+	if err != nil {
+		return [32]byte{}, err
+	}
 	roots := [][]byte{}
-	for i := 0; i < val.Type().NumField(); i++ {
+	for _, f := range fields {
 		var r [32]byte
 		var err error
-		if _, ok := val.Field(i).Interface().(bitfield.Bitlist); ok {
-			r, err = bitlistHasher(val.Field(i), 0 /* TODO: ADD CAPACITY */)
+		if _, ok := val.Field(f.index).Interface().(bitfield.Bitlist); ok {
+			r, err = bitlistHasher(val.Field(f.index), f.capacity)
 			roots = append(roots, r[:])
 			continue
 		}
 		if useCache {
 			r, err = hashCache.lookup(
-				val.Field(i),
+				val.Field(f.index),
 				newMakeHasher,
 				newMakeMarshaler,
-				0, /* TODO: ADD CAPACITY */
+				f.capacity,
 			)
 		} else {
-			r, err = newMakeHasher(val.Field(i), 0 /* TODO: ADD CAPACITY */)
+			r, err = newMakeHasher(val.Field(f.index), f.capacity)
 		}
 		if err != nil {
-			return [32]byte{}, fmt.Errorf("failed to hash field %s of struct: %v", val.Field(i).Type().Name(), err)
+			return [32]byte{}, fmt.Errorf("failed to hash field %s of struct: %v", val.Field(f.index).Type().Name(), err)
 		}
 		roots = append(roots, r[:])
 	}

@@ -139,28 +139,31 @@ func newmakeCompositeSliceMarshaler(val reflect.Value, buf []byte, startOffset u
 }
 
 func newmakeStructMarshaler(val reflect.Value, buf []byte, startOffset uint64) (uint64, error) {
+	fields, err := structFields(val.Type())
+	if err != nil {
+		return 0, err
+	}
 	fixedIndex := startOffset
 	fixedLength := uint64(0)
 	// For every field, we add up the total length of the items depending if they
 	// are variable or fixed-size fields.
-	for i := 0; i < val.Type().NumField(); i++ {
-		if isVariableSizeType(val.Field(i).Type()) {
+	for _, f := range fields {
+		if isVariableSizeType(val.Field(f.index).Type()) {
 			fixedLength += BytesPerLengthOffset
 		} else {
-			fixedLength += determineFixedSize(val.Field(i), val.Field(i).Type())
+			fixedLength += determineFixedSize(val.Field(f.index), val.Field(f.index).Type())
 		}
 	}
 	currentOffsetIndex := startOffset + fixedLength
 	nextOffsetIndex := currentOffsetIndex
-	var err error
-	for i := 0; i < val.Type().NumField(); i++ {
-		if !isVariableSizeType(val.Field(i).Type()) {
-			fixedIndex, err = newMakeMarshaler(val.Field(i), buf, fixedIndex)
+	for _, f := range fields {
+		if !isVariableSizeType(val.Field(f.index).Type()) {
+			fixedIndex, err = newMakeMarshaler(val.Field(f.index), buf, fixedIndex)
 			if err != nil {
 				return 0, err
 			}
 		} else {
-			nextOffsetIndex, err = newMakeMarshaler(val.Field(i), buf, currentOffsetIndex)
+			nextOffsetIndex, err = newMakeMarshaler(val.Field(f.index), buf, currentOffsetIndex)
 			if err != nil {
 				return 0, err
 			}
