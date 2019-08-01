@@ -221,11 +221,13 @@ func newmakeStructMarshaler(val reflect.Value, typ reflect.Type, buf []byte, sta
 	nextOffsetIndex := currentOffsetIndex
 	for _, f := range fields {
 		if !isVariableSizeType(f.typ) {
+			fmt.Printf("%s FIXED and index %d\n", f.name, currentOffsetIndex)
 			fixedIndex, err = newMakeMarshaler(val.Field(f.index), f.typ, buf, fixedIndex)
 			if err != nil {
 				return 0, err
 			}
 		} else {
+			fmt.Printf("%s VARIABLE and index %d\n", f.name, currentOffsetIndex)
 			nextOffsetIndex, err = newMakeMarshaler(val.Field(f.index), f.typ, buf, currentOffsetIndex)
 			if err != nil {
 				return 0, err
