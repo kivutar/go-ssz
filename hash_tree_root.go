@@ -219,7 +219,12 @@ func newBasicSliceHasher(val reflect.Value, typ reflect.Type, maxCapacity uint64
 			}
 			leaves = append(leaves, innerBuf)
 		} else {
-			r, err := newMakeHasher(val.Index(i), typ.Elem(), 0)
+			var r [32]byte
+			if useCache {
+				r, err = hashCache.newLookup(val.Index(i), typ.Elem(), 0)
+			} else {
+				r, err = newMakeHasher(val.Index(i), typ.Elem(), 0)
+			}
 			if err != nil {
 				return [32]byte{}, err
 			}
@@ -292,13 +297,13 @@ func newMakeStructHasher(val reflect.Value, typ reflect.Type, maxCapacity uint64
 }
 
 func makeFieldsHasher(val reflect.Value, fields []field) ([32]byte, error) {
-	roots := [][]byte{}
-	for _, f := range fields {
+	roots := make([][]byte, len(fields))
+	for i, f := range fields {
 		var r [32]byte
 		var err error
 		if _, ok := val.Field(f.index).Interface().(bitfield.Bitlist); ok {
 			r, err = bitlistHasher(val.Field(f.index), f.capacity)
-			roots = append(roots, r[:])
+			roots[i] = r[:]
 			continue
 		}
 		if useCache {
@@ -313,7 +318,7 @@ func makeFieldsHasher(val reflect.Value, fields []field) ([32]byte, error) {
 		if err != nil {
 			return [32]byte{}, fmt.Errorf("failed to hash field %s of struct: %v", val.Field(f.index).Type().Name(), err)
 		}
-		roots = append(roots, r[:])
+		roots[i] = r[:]
 	}
 	return bitwiseMerkleize(roots, uint64(len(fields)), true /* has limit */)
 }
