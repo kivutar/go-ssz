@@ -43,7 +43,7 @@ func HashTreeRoot(val interface{}) ([32]byte, error) {
 	var r [32]byte
 	var err error
 	if useCache {
-		r, err = hashCache.newLookup(rval, rval.Type(), 0)
+		r, err = hashCache.lookup(rval, rval.Type(), 0)
 	} else {
 		r, err = newMakeHasher(rval, rval.Type(), 0)
 	}
@@ -73,7 +73,7 @@ func HashTreeRootWithCapacity(val interface{}, maxCapacity uint64) ([32]byte, er
 	var r [32]byte
 	var err error
 	if useCache {
-		r, err = hashCache.newLookup(rval, rval.Type(), maxCapacity)
+		r, err = hashCache.lookup(rval, rval.Type(), maxCapacity)
 	} else {
 		r, err = newMakeHasher(rval, rval.Type(), maxCapacity)
 	}
@@ -151,7 +151,7 @@ func newBasicArrayHasher(val reflect.Value, typ reflect.Type, maxCapacity uint64
 	for i := 0; i < val.Len(); i++ {
 		var r [32]byte
 		if useCache {
-			r, err = hashCache.newLookup(val.Index(i), typ.Elem(), 0)
+			r, err = hashCache.lookup(val.Index(i), typ.Elem(), 0)
 		} else {
 			r, err = newMakeHasher(val.Index(i), typ.Elem(), 0)
 		}
@@ -180,7 +180,7 @@ func newCompositeArrayHasher(val reflect.Value, typ reflect.Type, maxCapacity ui
 	for i := 0; i < val.Len(); i++ {
 		var r [32]byte
 		if useCache {
-			r, err = hashCache.newLookup(val.Index(i), typ.Elem(), 0)
+			r, err = hashCache.lookup(val.Index(i), typ.Elem(), 0)
 		} else {
 			r, err = newMakeHasher(val.Index(i), typ.Elem(), 0)
 		}
@@ -221,7 +221,7 @@ func newBasicSliceHasher(val reflect.Value, typ reflect.Type, maxCapacity uint64
 		} else {
 			var r [32]byte
 			if useCache {
-				r, err = hashCache.newLookup(val.Index(i), typ.Elem(), 0)
+				r, err = hashCache.lookup(val.Index(i), typ.Elem(), 0)
 			} else {
 				r, err = newMakeHasher(val.Index(i), typ.Elem(), 0)
 			}
@@ -261,7 +261,7 @@ func newCompositeSliceHasher(val reflect.Value, typ reflect.Type, maxCapacity ui
 	for i := 0; i < val.Len(); i++ {
 		var r [32]byte
 		if useCache {
-			r, err = hashCache.newLookup(val.Index(i), typ.Elem(), 0)
+			r, err = hashCache.lookup(val.Index(i), typ.Elem(), 0)
 		} else {
 			r, err = newMakeHasher(val.Index(i), typ.Elem(), 0)
 		}
@@ -307,7 +307,7 @@ func makeFieldsHasher(val reflect.Value, fields []field) ([32]byte, error) {
 			continue
 		}
 		if useCache {
-			r, err = hashCache.newLookup(
+			r, err = hashCache.lookup(
 				val.Field(f.index),
 				f.typ,
 				f.capacity,

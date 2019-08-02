@@ -69,12 +69,12 @@ func (b *hashCacheS) RootByEncodedHash(h []byte) (bool, *root, error) {
 	return true, hInfo, nil
 }
 
-func (b *hashCacheS) newLookup(
+func (b *hashCacheS) lookup(
 	rval reflect.Value,
 	typ reflect.Type,
 	maxCapacity uint64,
 ) ([32]byte, error) {
-	cacheKey, err := newGenerateCacheKey(rval, typ, maxCapacity)
+	cacheKey, err := generateCacheKey(rval, typ, maxCapacity)
 	if err != nil {
 		return [32]byte{}, err
 	}
@@ -116,7 +116,7 @@ func (b *hashCacheS) AddRoot(h []byte, rootB []byte) error {
 	return nil
 }
 
-func newGenerateCacheKey(v reflect.Value, typ reflect.Type, maxCapacity uint64) ([]byte, error) {
+func generateCacheKey(v reflect.Value, typ reflect.Type, maxCapacity uint64) ([]byte, error) {
 	encodedLength := make([]byte, 8)
 	encodedCapacity := make([]byte, 8)
 	binary.LittleEndian.PutUint64(encodedCapacity, maxCapacity)

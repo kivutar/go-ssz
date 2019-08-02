@@ -49,7 +49,7 @@ func TestCache_byHash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	k, err := newGenerateCacheKey(reflect.ValueOf(byteSl), reflect.TypeOf(byteSl), 0)
+	k, err := generateCacheKey(reflect.ValueOf(byteSl), reflect.TypeOf(byteSl), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
