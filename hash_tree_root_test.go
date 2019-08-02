@@ -136,7 +136,7 @@ func TestHashTreeRoot_ConcurrentAccess(t *testing.T) {
 		Signature:         []byte("TESTING23"),
 	}
 	var wg sync.WaitGroup
-	// We ensure the signing root function can be computed in a thread-safe manner.
+	// We ensure the hash tree root function can be computed in a thread-safe manner.
 	wg.Add(100)
 	for i := 0; i < 100; i++ {
 		go func(tt *testing.T, w *sync.WaitGroup) {
